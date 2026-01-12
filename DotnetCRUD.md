@@ -1,238 +1,295 @@
-Below is a **complete, minimal, working ASP.NET MVC 5 CRUD project** using **Entity Framework (Code First)**.
-You can **copy–paste these files directly** into a new MVC project in Visual Studio and run it.
+Great choice 👍 — building a **simple Login/Register CRUD app** is the *best* way to learn ASP.NET Core MVC 8.
+
+Below is a **complete, minimal, DB-First ASP.NET Core MVC 8 app** using:
+
+* ASP.NET Core MVC 8
+* Entity Framework Core (DB First)
+* SQL Server
+* **NO Identity**, **NO extra NuGet packages**
+* Simple session-based authentication
+* CRUD: Register, Login, Edit Profile, List Users, Delete User
 
 ---
 
-# 1️⃣ Create the Project
+# 1️⃣ Database (Already Done ✅)
 
-In **Visual Studio**:
+You said DB First is already implemented and table exists:
 
-* File → New → Project
-* **ASP.NET Web Application (.NET Framework)**
-* Name: `MvcCrudApp`
-* Template: **MVC**
-* Authentication: **No Authentication**
-
----
-
-# 2️⃣ Project Structure
-
-```
-MvcCrudApp
-│
-├── Controllers
-│   └── ProductsController.cs
-│
-├── Models
-│   ├── Product.cs
-│   └── ApplicationDbContext.cs
-│
-├── Views
-│   ├── Products
-│   │   ├── Index.cshtml
-│   │   ├── Create.cshtml
-│   │   ├── Edit.cshtml
-│   │   ├── Delete.cshtml
-│   │   └── Details.cshtml
-│
-├── Web.config
-├── Global.asax
-└── README.md
+```sql
+UsersDevesh
+-----------
+Id        INT (PK, Identity)
+Username  NVARCHAR(50)
+Password  NVARCHAR(50)
+FName     NVARCHAR(50)
+LName     NVARCHAR(50)
+Age       INT
 ```
 
+EF Core generated:
+
+* `UsersDevesh.cs`
+* `AppDbContext.cs`
+
 ---
 
-# 3️⃣ Model Code
+# 2️⃣ Model (DB First Generated)
 
-## 📄 Models/Product.cs
+### `Models/UsersDevesh.cs`
 
 ```csharp
-using System.ComponentModel.DataAnnotations;
-
-namespace MvcCrudApp.Models
+public partial class UsersDevesh
 {
-    public class Product
-    {
-        public int Id { get; set; }
-
-        [Required]
-        [StringLength(100)]
-        public string Name { get; set; }
-
-        [Required]
-        public decimal Price { get; set; }
-
-        [StringLength(500)]
-        public string Description { get; set; }
-    }
+    public int Id { get; set; }
+    public string Username { get; set; } = null!;
+    public string Password { get; set; } = null!;
+    public string Fname { get; set; } = null!;
+    public string Lname { get; set; } = null!;
+    public int Age { get; set; }
 }
 ```
 
 ---
 
-## 📄 Models/ApplicationDbContext.cs
+# 3️⃣ DbContext
+
+### `Models/AppDbContext.cs`
 
 ```csharp
-using System.Data.Entity;
+using Microsoft.EntityFrameworkCore;
 
-namespace MvcCrudApp.Models
+public partial class AppDbContext : DbContext
 {
-    public class ApplicationDbContext : DbContext
+    public AppDbContext(DbContextOptions<AppDbContext> options)
+        : base(options)
     {
-        public ApplicationDbContext() : base("DefaultConnection")
-        {
-        }
-
-        public DbSet<Product> Products { get; set; }
     }
+
+    public virtual DbSet<UsersDevesh> UsersDeveshs { get; set; }
 }
 ```
 
 ---
 
-# 4️⃣ Controller Code
+# 4️⃣ Program.cs (IMPORTANT)
 
-## 📄 Controllers/ProductsController.cs
+### `Program.cs`
 
 ```csharp
-using System.Linq;
-using System.Net;
-using System.Web.Mvc;
-using MvcCrudApp.Models;
-using System.Data.Entity;
+var builder = WebApplication.CreateBuilder(args);
 
-namespace MvcCrudApp.Controllers
+builder.Services.AddControllersWithViews();
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddSession();
+
+var app = builder.Build();
+
+app.UseStaticFiles();
+app.UseRouting();
+app.UseSession();
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Account}/{action=Login}/{id?}");
+
+app.Run();
+```
+
+---
+
+# 5️⃣ Account Controller (Login / Register / Logout)
+
+### `Controllers/AccountController.cs`
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+
+public class AccountController : Controller
 {
-    public class ProductsController : Controller
+    private readonly AppDbContext _context;
+
+    public AccountController(AppDbContext context)
     {
-        private ApplicationDbContext db = new ApplicationDbContext();
+        _context = context;
+    }
 
-        // GET: Products
-        public ActionResult Index()
+    // LOGIN
+    public IActionResult Login()
+    {
+        return View();
+    }
+
+    [HttpPost]
+    public IActionResult Login(string username, string password)
+    {
+        var user = _context.UsersDeveshs
+            .FirstOrDefault(u => u.Username == username && u.Password == password);
+
+        if (user == null)
         {
-            return View(db.Products.ToList());
-        }
-
-        // GET: Products/Details/5
-        public ActionResult Details(int? id)
-        {
-            if (id == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
-
-            Product product = db.Products.Find(id);
-            if (product == null)
-                return HttpNotFound();
-
-            return View(product);
-        }
-
-        // GET: Products/Create
-        public ActionResult Create()
-        {
+            ViewBag.Error = "Invalid username or password";
             return View();
         }
 
-        // POST: Products/Create
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult Create(Product product)
-        {
-            if (ModelState.IsValid)
-            {
-                db.Products.Add(product);
-                db.SaveChanges();
-                return RedirectToAction("Index");
-            }
-            return View(product);
-        }
+        HttpContext.Session.SetInt32("UserId", user.Id);
+        HttpContext.Session.SetString("Username", user.Username);
 
-        // GET: Products/Edit/5
-        public ActionResult Edit(int? id)
-        {
-            if (id == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
+        return RedirectToAction("Index", "Users");
+    }
 
-            Product product = db.Products.Find(id);
-            if (product == null)
-                return HttpNotFound();
+    // REGISTER
+    public IActionResult Register()
+    {
+        return View();
+    }
 
-            return View(product);
-        }
+    [HttpPost]
+    public IActionResult Register(UsersDevesh user)
+    {
+        _context.UsersDeveshs.Add(user);
+        _context.SaveChanges();
 
-        // POST: Products/Edit/5
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult Edit(Product product)
-        {
-            if (ModelState.IsValid)
-            {
-                db.Entry(product).State = EntityState.Modified;
-                db.SaveChanges();
-                return RedirectToAction("Index");
-            }
-            return View(product);
-        }
+        return RedirectToAction("Login");
+    }
 
-        // GET: Products/Delete/5
-        public ActionResult Delete(int? id)
-        {
-            if (id == null)
-                return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
-
-            Product product = db.Products.Find(id);
-            if (product == null)
-                return HttpNotFound();
-
-            return View(product);
-        }
-
-        // POST: Products/Delete/5
-        [HttpPost, ActionName("Delete")]
-        [ValidateAntiForgeryToken]
-        public ActionResult DeleteConfirmed(int id)
-        {
-            Product product = db.Products.Find(id);
-            db.Products.Remove(product);
-            db.SaveChanges();
-            return RedirectToAction("Index");
-        }
+    // LOGOUT
+    public IActionResult Logout()
+    {
+        HttpContext.Session.Clear();
+        return RedirectToAction("Login");
     }
 }
 ```
 
 ---
 
-# 5️⃣ Views (Razor Pages)
+# 6️⃣ Users Controller (CRUD)
 
-## 📄 Views/Products/Index.cshtml
+### `Controllers/UsersController.cs`
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+
+public class UsersController : Controller
+{
+    private readonly AppDbContext _context;
+
+    public UsersController(AppDbContext context)
+    {
+        _context = context;
+    }
+
+    private bool IsLoggedIn()
+    {
+        return HttpContext.Session.GetInt32("UserId") != null;
+    }
+
+    public IActionResult Index()
+    {
+        if (!IsLoggedIn())
+            return RedirectToAction("Login", "Account");
+
+        return View(_context.UsersDeveshs.ToList());
+    }
+
+    public IActionResult Edit(int id)
+    {
+        var user = _context.UsersDeveshs.Find(id);
+        return View(user);
+    }
+
+    [HttpPost]
+    public IActionResult Edit(UsersDevesh user)
+    {
+        _context.UsersDeveshs.Update(user);
+        _context.SaveChanges();
+        return RedirectToAction("Index");
+    }
+
+    public IActionResult Delete(int id)
+    {
+        var user = _context.UsersDeveshs.Find(id);
+        _context.UsersDeveshs.Remove(user);
+        _context.SaveChanges();
+        return RedirectToAction("Index");
+    }
+}
+```
+
+---
+
+# 7️⃣ Views
+
+## 🔹 Login View
+
+### `Views/Account/Login.cshtml`
 
 ```html
-@model IEnumerable<MvcCrudApp.Models.Product>
+<h2>Login</h2>
 
-<h2>Products</h2>
+<form method="post">
+    <input name="username" placeholder="Username" />
+    <br />
+    <input name="password" type="password" placeholder="Password" />
+    <br />
+    <button type="submit">Login</button>
+</form>
 
-<p>
-    @Html.ActionLink("Create New", "Create")
-</p>
+<p style="color:red">@ViewBag.Error</p>
 
-<table border="1" cellpadding="5">
+<a href="/Account/Register">Register</a>
+```
+
+---
+
+## 🔹 Register View
+
+### `Views/Account/Register.cshtml`
+
+```html
+<h2>Register</h2>
+
+<form method="post">
+    <input name="Username" placeholder="Username" /><br />
+    <input name="Password" type="password" placeholder="Password" /><br />
+    <input name="Fname" placeholder="First Name" /><br />
+    <input name="Lname" placeholder="Last Name" /><br />
+    <input name="Age" type="number" placeholder="Age" /><br />
+    <button type="submit">Register</button>
+</form>
+```
+
+---
+
+## 🔹 Users List (CRUD)
+
+### `Views/Users/Index.cshtml`
+
+```html
+<h2>Users</h2>
+
+<a href="/Account/Logout">Logout</a>
+
+<table border="1">
     <tr>
+        <th>Username</th>
         <th>Name</th>
-        <th>Price</th>
-        <th>Description</th>
+        <th>Age</th>
         <th>Actions</th>
     </tr>
 
-@foreach (var item in Model)
+@foreach (var u in Model)
 {
     <tr>
-        <td>@item.Name</td>
-        <td>@item.Price</td>
-        <td>@item.Description</td>
+        <td>@u.Username</td>
+        <td>@u.Fname @u.Lname</td>
+        <td>@u.Age</td>
         <td>
-            @Html.ActionLink("Edit", "Edit", new { id = item.Id }) |
-            @Html.ActionLink("Details", "Details", new { id = item.Id }) |
-            @Html.ActionLink("Delete", "Delete", new { id = item.Id })
+            <a href="/Users/Edit/@u.Id">Edit</a> |
+            <a href="/Users/Delete/@u.Id">Delete</a>
         </td>
     </tr>
 }
@@ -241,134 +298,54 @@ namespace MvcCrudApp.Controllers
 
 ---
 
-## 📄 Views/Products/Create.cshtml
+## 🔹 Edit User
+
+### `Views/Users/Edit.cshtml`
 
 ```html
-@model MvcCrudApp.Models.Product
+<h2>Edit User</h2>
 
-<h2>Create Product</h2>
+<form method="post">
+    <input type="hidden" name="Id" value="@Model.Id" />
 
-@using (Html.BeginForm())
-{
-    @Html.AntiForgeryToken()
+    Username: <input name="Username" value="@Model.Username" /><br />
+    Password: <input name="Password" value="@Model.Password" /><br />
+    First Name: <input name="Fname" value="@Model.Fname" /><br />
+    Last Name: <input name="Lname" value="@Model.Lname" /><br />
+    Age: <input name="Age" value="@Model.Age" /><br />
 
-    <p>Name: @Html.TextBoxFor(m => m.Name)</p>
-    <p>Price: @Html.TextBoxFor(m => m.Price)</p>
-    <p>Description: @Html.TextBoxFor(m => m.Description)</p>
-
-    <input type="submit" value="Save" />
-}
+    <button type="submit">Save</button>
+</form>
 ```
 
 ---
 
-## 📄 Views/Products/Edit.cshtml
+# 8️⃣ What You Have Learned 🎯
 
-```html
-@model MvcCrudApp.Models.Product
-
-<h2>Edit Product</h2>
-
-@using (Html.BeginForm())
-{
-    @Html.AntiForgeryToken()
-    @Html.HiddenFor(m => m.Id)
-
-    <p>Name: @Html.TextBoxFor(m => m.Name)</p>
-    <p>Price: @Html.TextBoxFor(m => m.Price)</p>
-    <p>Description: @Html.TextBoxFor(m => m.Description)</p>
-
-    <input type="submit" value="Update" />
-}
-```
+✔ MVC Pattern
+✔ DB First EF Core
+✔ Session-based login
+✔ CRUD operations
+✔ Routing & Controllers
+✔ Razor Views
 
 ---
 
-## 📄 Views/Products/Details.cshtml
+# 9️⃣ Next Improvements (Highly Recommended)
 
-```html
-@model MvcCrudApp.Models.Product
-
-<h2>Product Details</h2>
-
-<p><strong>Name:</strong> @Model.Name</p>
-<p><strong>Price:</strong> @Model.Price</p>
-<p><strong>Description:</strong> @Model.Description</p>
-
-<p>@Html.ActionLink("Back to List", "Index")</p>
-```
+* 🔐 Hash passwords (SHA256 / BCrypt)
+* 🛡 Authorization filters
+* 🎨 Bootstrap UI
+* 📦 Repository pattern
+* 🔑 ASP.NET Identity (later)
 
 ---
 
-## 📄 Views/Products/Delete.cshtml
+If you want, I can:
 
-```html
-@model MvcCrudApp.Models.Product
+* Convert this to **ASP.NET Identity**
+* Add **password hashing**
+* Add **role-based login**
+* Explain **each file line-by-line**
 
-<h2>Delete Product</h2>
-
-<p>Are you sure you want to delete this?</p>
-
-<p><strong>@Model.Name</strong></p>
-
-@using (Html.BeginForm())
-{
-    @Html.AntiForgeryToken()
-    <input type="submit" value="Delete" />
-}
-```
-
----
-
-# 6️⃣ Database Configuration
-
-## 📄 Web.config (connection string)
-
-```xml
-<connectionStrings>
-  <add name="DefaultConnection"
-       connectionString="Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=MvcCrudDb;Integrated Security=True"
-       providerName="System.Data.SqlClient" />
-</connectionStrings>
-```
-
----
-
-# 7️⃣ Create Database (IMPORTANT)
-
-Open **Package Manager Console** and run:
-
-```powershell
-Enable-Migrations
-Add-Migration InitialCreate
-Update-Database
-```
-
----
-
-# 8️⃣ Run the App 🚀
-
-* Press **F5**
-* Open browser:
-
-```
-https://localhost:{port}/Products
-```
-
----
-
-# ✅ What You Have Now
-
-✔ Full MVC project
-✔ Entity Framework CRUD
-✔ Database
-✔ Ready for GitHub
-
-If you want:
-
-* ASP.NET Core version
-* API + MVC
-* Authentication
-* Bootstrap UI
-
-Just tell me 👍
+Just tell me 👌
